@@ -26,7 +26,7 @@
 La aplicación móvil está estructurada siguiendo el patrón de diseño de separación de responsabilidades:
 
 ```text
-mobile-parkshare/
+mobile-cocheraya/
 ├── assets/         # Recursos del sistema (iconos, splash screens, tipografías)
 └── src/
     ├── app/        # Estructura de vistas nativas (Expo Router)

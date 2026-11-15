@@ -2,6 +2,10 @@ import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { DMSans_400Regular } from '@expo-google-fonts/dm-sans/400Regular';
+import { DMSans_500Medium } from '@expo-google-fonts/dm-sans/500Medium';
+import { DMSans_700Bold } from '@expo-google-fonts/dm-sans/700Bold';
 
 function NavigationWrapper() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -35,9 +39,12 @@ function NavigationWrapper() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({ DMSans_400Regular, DMSans_500Medium, DMSans_700Bold });
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <AuthProvider>
-      <StatusBar style="light" />
+      <StatusBar style="auto" />
       <NavigationWrapper />
     </AuthProvider>
   );

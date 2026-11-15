@@ -10,15 +10,20 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LayoutDashboard, Landmark, Star, ParkingSquare, QrCode, ClipboardList, TrendingUp, MessageSquare } from 'lucide-react-native';
+import { LayoutDashboard, Landmark, Star, ParkingSquare, QrCode, ClipboardList, TrendingUp, MessageSquare, Plus } from 'lucide-react-native';
 import parkingService, { HostDashboardMetrics } from '../../services/parkingService';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/Card';
 import Spinner from '../../components/Spinner';
+import { cocheraFonts, useCocheraTheme } from '../../constants/cocheraya';
+import { formatSoles } from '../../services/presentation';
+
+const limaDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' });
 
 export default function HostDashboardScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const colors = useCocheraTheme();
   
   const [metrics, setMetrics] = useState<HostDashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,11 +67,15 @@ export default function HostDashboardScreen() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'ACTIVE':
-        return 'En Uso (Ocupada)';
+        return 'En curso';
       case 'PENDING':
-        return 'Reservada';
+        return 'Pendiente';
       case 'FINISHED':
-        return 'Finalizada Reciente';
+        return 'Finalizada';
+      case 'CANCELLED':
+        return 'Cancelada';
+      case 'EXPIRED':
+        return 'Expirada';
       default:
         return status;
     }
@@ -83,17 +92,9 @@ export default function HostDashboardScreen() {
     });
   };
 
-  const getActiveOrRecentReservations = () => {
-    if (!metrics?.recentReservations) return [];
-    return metrics.recentReservations.filter((res) => {
-      if (res.status === 'PENDING' || res.status === 'ACTIVE') return true;
-      if (res.status === 'FINISHED' && res.endTime) {
-        const diffMs = Date.now() - new Date(res.endTime).getTime();
-        return diffMs <= 10 * 60 * 1000; // 10 minutes
-      }
-      return false;
-    });
-  };
+  const today = limaDate.format(new Date());
+  const agenda = metrics?.recentReservations?.filter(res => res.status === 'PENDING'
+    || res.status === 'ACTIVE' || res.createdAt?.slice(0, 10) === today) ?? [];
 
   return (
     <View style={styles.container}>
@@ -112,8 +113,13 @@ export default function HostDashboardScreen() {
           {/* Header Summary */}
           <View style={styles.header}>
             <Text style={styles.welcomeText}>¡Hola, {user?.name.split(' ')[0]}!</Text>
-            <Text style={styles.subtext}>Resumen de rendimiento de tu negocio</Text>
+            <Text style={styles.subtext}>Gestiona tus cocheras y las próximas llegadas.</Text>
           </View>
+          <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/(host)/add')}
+            style={{ minHeight: 48, paddingHorizontal: 12, gap: 8, borderRadius: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.accent }}>
+            <Plus size={20} color={colors.onAccent} />
+            <Text style={{ color: colors.onAccent, fontFamily: cocheraFonts.bold }}>Publicar cochera</Text>
+          </TouchableOpacity>
  
           {/* Quick QR Scanner Trigger */}
           <TouchableOpacity
@@ -138,7 +144,7 @@ export default function HostDashboardScreen() {
               </View>
               <Text style={styles.statLabel}>Ganancias Totales</Text>
               <Text style={styles.statVal}>
-                S/. {metrics?.totalEarnings ? metrics.totalEarnings.toFixed(2) : '0.00'}
+                {formatSoles(metrics?.totalEarnings ?? 0)}
               </Text>
             </Card>
  
@@ -156,7 +162,7 @@ export default function HostDashboardScreen() {
               <View style={[styles.iconWrapper, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
                 <ParkingSquare size={20} color="#3b82f6" />
               </View>
-              <Text style={styles.statLabel}>Cocheras Activas</Text>
+              <Text style={styles.statLabel}>Cocheras publicadas</Text>
               <Text style={styles.statVal}>{metrics?.totalSpaces || 0}</Text>
             </Card>
  
@@ -171,18 +177,18 @@ export default function HostDashboardScreen() {
  
           {/* Live activity section */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Actividad de Cocheras en Vivo</Text>
+            <Text style={styles.sectionTitle}>Reservas activas y de hoy</Text>
             <TouchableOpacity onPress={() => router.push('/(host)/spaces')}>
               <Text style={styles.sectionLink}>Ver cocheras</Text>
             </TouchableOpacity>
           </View>
  
-          {getActiveOrRecentReservations().length > 0 ? (
-            getActiveOrRecentReservations().map((res) => (
+          {agenda.length > 0 ? (
+            agenda.map((res) => (
               <Card key={res.reservationId} style={styles.resCard}>
                 <View style={styles.resRow}>
                   <View style={styles.resLeft}>
-                    <Text style={styles.resSpaceName} numberOfLines={1}>{res.parkingSpaceTitle}</Text>
+                    <Text style={styles.resSpaceName}>{res.parkingSpaceTitle}</Text>
                     <Text style={styles.resDriverName}>Conductor: {res.driverName}</Text>
                     <Text style={styles.resTime}>{formatDateTime(res.createdAt)}</Text>
                   </View>
@@ -192,7 +198,7 @@ export default function HostDashboardScreen() {
                       {getStatusLabel(res.status)}
                     </Text>
                     <Text style={styles.resPrice}>
-                      S/. {res.pricePerHour ? res.pricePerHour.toFixed(2) : '0.00'}/h
+                      {formatSoles(res.pricePerHour ?? 0)} / h
                     </Text>
                   </View>
                 </View>
@@ -217,7 +223,7 @@ export default function HostDashboardScreen() {
           ) : (
             <Card style={styles.emptyCard}>
               <ClipboardList size={40} color="#374151" />
-              <Text style={styles.emptyText}>No hay cocheras ocupadas ni reservadas en este momento.</Text>
+              <Text style={styles.emptyText}>No tienes reservas activas ni actividad reciente de hoy.</Text>
             </Card>
           )}
         </ScrollView>

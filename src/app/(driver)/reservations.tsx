@@ -1,403 +1,263 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Modal,
-  Image,
-  RefreshControl,
-  Alert,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { Calendar, QrCode, Clock, Info, ShieldAlert, CheckCircle2, XCircle, MessageSquare } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
-import reservationService, { ReservationResponse, QRResponse } from '../../services/reservationService';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Calendar, MapPin, MessageSquare, QrCode } from 'lucide-react-native';
+import { cocheraFonts, useCocheraTheme } from '../../constants/cocheraya';
 import { useAuth } from '../../context/AuthContext';
-import Card from '../../components/Card';
-import Badge from '../../components/Badge';
-import Spinner from '../../components/Spinner';
+import reservationService, { type QRResponse, type ReservationResponse } from '../../services/reservationService';
+import walletService from '../../services/walletService';
+import { formatSoles } from '../../services/presentation';
+
+const labels = { PENDING: 'Pendiente', ACTIVE: 'En curso', FINISHED: 'Finalizada', CANCELLED: 'Cancelada', EXPIRED: 'Expirada' };
+const ongoing = (item: ReservationResponse) => item.status === 'PENDING' || item.status === 'ACTIVE';
+
+function dateLabel(iso?: string) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('es-PE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
 
 export default function ReservationsScreen() {
-  const { refreshBalance } = useAuth();
+  const colors = useCocheraTheme();
   const router = useRouter();
-  
-  const [reservations, setReservations] = useState<ReservationResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { refreshBalance } = useAuth();
+  const [reservations, setReservations] = useState<ReservationResponse[]>();
+  const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [ticketId, setTicketId] = useState<number>();
+  const [qr, setQr] = useState<{ key: string; data?: QRResponse }>();
+  const [qrRetry, setQrRetry] = useState(0);
+  const [cancelId, setCancelId] = useState<number>();
+  const [cancelling, setCancelling] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [totals, setTotals] = useState<Record<number, number>>({});
+  const request = useRef<AbortController | null>(null);
+  const previousOngoing = useRef<string>(undefined);
+  const refreshBalanceRef = useRef(refreshBalance);
+  useEffect(() => { refreshBalanceRef.current = refreshBalance; }, [refreshBalance]);
 
-  // QR Modal State
-  const [qrModalVisible, setQrModalVisible] = useState(false);
-  const [loadingQr, setLoadingQr] = useState(false);
-  const [qrData, setQrData] = useState<QRResponse | null>(null);
-  const [selectedResForQr, setSelectedResForQr] = useState<ReservationResponse | null>(null);
-
-  const fetchReservations = useCallback(async (isRefresh = false) => {
-    if (!isRefresh) setLoading(true);
+  const reload = useCallback(async (foreground = false) => {
+    if (request.current && !foreground) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     try {
-      const data = await reservationService.getMyReservations();
-      // Sort reservations so ACTIVE and PENDING are on top, then descending by reservation date
-      const sorted = [...data].sort((a, b) => {
-        const priority: Record<string, number> = { ACTIVE: 3, PENDING: 2, FINISHED: 1, EXPIRED: 0, CANCELLED: 0 };
-        const aVal = priority[a.status] ?? 0;
-        const bVal = priority[b.status] ?? 0;
-        if (aVal !== bVal) return bVal - aVal;
-        return new Date(b.reservedAt).getTime() - new Date(a.reservedAt).getTime();
-      });
-      setReservations(sorted);
-    } catch (err) {
-      console.error('Error fetching reservations', err);
+      const data = await reservationService.getMyReservations(controller.signal);
+      if (controller.signal.aborted) return;
+      const current = data.filter(ongoing).map(item => item.id + ':' + item.status).sort().join(',');
+      if (previousOngoing.current !== undefined && previousOngoing.current !== current) {
+        void refreshBalanceRef.current();
+      }
+      previousOngoing.current = current;
+      setReservations(data);
+      setFailed(false);
+    } catch {
+      if (!controller.signal.aborted) setFailed(true);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (request.current === controller) {
+        request.current = null;
+        setRefreshing(false);
+      }
     }
   }, []);
 
-  // Poll in the background to automatically update status when Checked-In/Checked-Out by the Host
+  useFocusEffect(useCallback(() => {
+    void reload(true);
+    const timer = setInterval(() => { void reload(); }, 5000);
+    return () => { clearInterval(timer); request.current?.abort(); request.current = null; };
+  }, [reload]));
+
+  const current = reservations?.filter(ongoing).sort((a, b) => Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE')) ?? [];
+  const history = reservations?.filter(item => !ongoing(item)).sort((a, b) => b.reservedAt.localeCompare(a.reservedAt)) ?? [];
+  const finishedKey = history.filter(item => item.status === 'FINISHED').map(item => item.id).sort((a, b) => a - b).join(',');
+  const ticket = current.find(item => item.id === ticketId);
+  const qrKey = ticket ? [ticket.id, ticket.status, qrRetry].join(',') : '';
+  const ticketReservation = ticket?.id;
+
   useEffect(() => {
-    fetchReservations();
-
-    const interval = setInterval(async () => {
-      try {
-        const data = await reservationService.getMyReservations();
-        const sorted = [...data].sort((a, b) => {
-          const priority: Record<string, number> = { ACTIVE: 3, PENDING: 2, FINISHED: 1, EXPIRED: 0, CANCELLED: 0 };
-          const aVal = priority[a.status] ?? 0;
-          const bVal = priority[b.status] ?? 0;
-          if (aVal !== bVal) return bVal - aVal;
-          return new Date(b.reservedAt).getTime() - new Date(a.reservedAt).getTime();
-        });
-
-        setReservations(prev => {
-          const prevActive = prev.find(r => r.status === 'PENDING' || r.status === 'ACTIVE');
-          const newActive = sorted.find(r => r.status === 'PENDING' || r.status === 'ACTIVE');
-          
-          const statusChanged = 
-            prevActive?.status !== newActive?.status || 
-            prevActive?.id !== newActive?.id ||
-            prev.length !== sorted.length;
-
-          if (statusChanged) {
-            refreshBalance();
-            if (newActive?.status === 'ACTIVE' && prevActive?.status === 'PENDING') {
-              setSelectedResForQr(newActive);
-              // Silent reload QR code
-              reservationService.generateQr(newActive.id).then(setQrData).catch(console.error);
-            } else if (!newActive) {
-              setQrModalVisible(false);
-            }
-            return sorted;
-          }
-          return prev;
-        });
-      } catch (err) {
-        // Silent error
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [fetchReservations, refreshBalance]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchReservations(true);
-  };
-
-  const handleCancel = (id: number) => {
-    Alert.alert(
-      'Cancelar Reserva',
-      '¿Estás seguro de que deseas cancelar esta reserva? Liberará la cochera de inmediato y no tendrá costo.',
-      [
-        { text: 'Atrás', style: 'cancel' },
-        {
-          text: 'Sí, Cancelar',
-          style: 'destructive',
-          onPress: async () => {
-            setCancellingId(id);
-            try {
-              await reservationService.cancel(id);
-              Alert.alert('Reserva Cancelada', 'La cochera ha sido liberada correctamente.');
-              fetchReservations();
-              refreshBalance();
-            } catch (err: any) {
-              const msg = err.response?.data?.message || 'No se pudo cancelar la reserva.';
-              Alert.alert('Error', msg);
-            } finally {
-              setCancellingId(null);
-            }
+    if (!finishedKey) return;
+    const controller = new AbortController();
+    const missing = new Set(finishedKey.split(',').map(Number));
+    const found: Record<number, number> = {};
+    async function getTotals() {
+      let page = 0;
+      while (missing.size && !controller.signal.aborted) {
+        const response = await walletService.getTransactionsByType('CHARGE', page, 50, controller.signal);
+        for (const item of response.content) {
+          if (item.reservationId && missing.delete(item.reservationId)) {
+            found[item.reservationId] = Math.abs(item.amount);
           }
         }
-      ]
-    );
-  };
+        if (++page >= response.totalPages) break;
+      }
+      if (!controller.signal.aborted) setTotals(found);
+    }
+    void getTotals().catch(() => undefined);
+    return () => controller.abort();
+  }, [finishedKey]);
 
-  const handleShowQr = async (res: ReservationResponse) => {
-    setSelectedResForQr(res);
-    setQrModalVisible(true);
-    setLoadingQr(true);
-    setQrData(null);
+  useEffect(() => {
+    if (!ticketReservation) return;
+    let disposed = false;
+    void reservationService.generateQr(ticketReservation)
+      .then(data => { if (!disposed) setQr({ key: qrKey, data }); })
+      .catch(() => { if (!disposed) setQr({ key: qrKey }); });
+    return () => { disposed = true; };
+  }, [qrKey, ticketReservation]);
+
+  async function cancelReservation() {
+    if (cancelId === undefined || cancelling) return;
+    setCancelling(true);
+    setActionError('');
+    setNotice('');
     try {
-      const qr = await reservationService.generateQr(res.id);
-      setQrData(qr);
-    } catch (err: any) {
-      console.error('Error generating QR', err);
-      Alert.alert('Error', 'No se pudo generar el código QR de check-in/out.');
-      setQrModalVisible(false);
+      await reservationService.cancel(cancelId);
+      setCancelId(undefined);
+      setNotice('Reserva cancelada. La cochera se liberó sin cobro.');
+      void refreshBalance();
+      await reload(true);
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setActionError(message || 'No se pudo cancelar la reserva.');
     } finally {
-      setLoadingQr(false);
+      setCancelling(false);
     }
-  };
+  }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return <Badge label="Pendiente" status="warning" />;
-      case 'ACTIVE':
-        return <Badge label="En Curso" status="primary" />;
-      case 'FINISHED':
-        return <Badge label="Finalizada" status="success" />;
-      case 'CANCELLED':
-        return <Badge label="Cancelada" status="danger" />;
-      default:
-        return <Badge label="Expirada" status="default" />;
-    }
-  };
+  const text = { color: colors.ink, fontFamily: cocheraFonts.regular };
+  const muted = { color: colors.secondary, fontFamily: cocheraFonts.regular };
+  const heading = { color: colors.ink, fontFamily: cocheraFonts.bold };
+  const accent = { color: colors.accent, fontFamily: cocheraFonts.bold };
+  const surface = { backgroundColor: colors.surface, borderColor: colors.outline };
+  const openChat = (id: number) => router.push({ pathname: '/chat/[id]', params: { id: String(id) } });
+  const qrLoading = qr?.key !== qrKey;
+  const qrImage = !qrLoading ? qr?.data?.qrImageBase64 : undefined;
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return <Clock size={20} color="#fbbf24" />;
-      case 'ACTIVE':
-        return <QrCode size={20} color="#c084fc" />;
-      case 'FINISHED':
-        return <CheckCircle2 size={20} color="#10b981" />;
-      case 'CANCELLED':
-        return <XCircle size={20} color="#ef4444" />;
-      default:
-        return <ShieldAlert size={20} color="#94a3b8" />;
-    }
-  };
-
-  const formatDateTime = (isoString?: string) => {
-    if (!isoString) return '-';
-    const d = new Date(isoString);
-    return d.toLocaleString('es-PE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const renderReservationCard = ({ item }: { item: ReservationResponse }) => {
-    const isPending = item.status === 'PENDING';
-    const isActive = item.status === 'ACTIVE';
-
-    return (
-      <Card style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.headerLeft}>
-            {getStatusIcon(item.status)}
-            <Text style={styles.spaceTitle} numberOfLines={1}>
-              {item.parkingSpace.title}
-            </Text>
-          </View>
-          {getStatusBadge(item.status)}
-        </View>
-
-        <Text style={styles.spaceAddress}>📍 {item.parkingSpace.address}</Text>
-
-        <View style={styles.divider} />
-
-        <View style={styles.infoGrid}>
-          <View style={styles.infoCol}>
-            <Text style={styles.infoLabel}>Tarifa por Hora</Text>
-            <Text style={styles.infoVal}>S/. {item.parkingSpace.pricePerHour.toFixed(2)}</Text>
-          </View>
-          <View style={styles.infoCol}>
-            <Text style={styles.infoLabel}>Reservado El</Text>
-            <Text style={styles.infoVal}>{formatDateTime(item.reservedAt)}</Text>
-          </View>
-        </View>
-
-        {(isActive || item.status === 'FINISHED') && (
-          <View style={styles.infoGridExtended}>
-            <View style={styles.infoCol}>
-              <Text style={styles.infoLabel}>Hora Entrada</Text>
-              <Text style={styles.infoVal}>{formatDateTime(item.startTime)}</Text>
-            </View>
-            <View style={styles.infoCol}>
-              <Text style={styles.infoLabel}>Hora Salida</Text>
-              <Text style={styles.infoVal}>{formatDateTime(item.endTime)}</Text>
-            </View>
-          </View>
-        )}
-
-        {isPending && item.expiresAt && (
-          <View style={styles.alertRow}>
-            <Info size={14} color="#f59e0b" />
-            <Text style={styles.alertText}>
-              Expira si no haces Check-In antes de: {formatDateTime(item.expiresAt)}
-            </Text>
-          </View>
-        )}
-
-        {/* Action buttons */}
-        {(isPending || isActive) && (
-          <View style={styles.actions}>
-            {isPending && (
-              <TouchableOpacity
-                style={[styles.btn, styles.btnOutline]}
-                onPress={() => handleCancel(item.id)}
-                disabled={cancellingId === item.id}
-              >
-                {cancellingId === item.id ? (
-                  <ActivityIndicator size="small" color="#94a3b8" />
-                ) : (
-                  <Text style={styles.btnOutlineText}>Cancelar</Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={[styles.btn, styles.btnChat, { flex: isPending ? 0.8 : 1 }]}
-              onPress={() => router.push(`/chat/${item.id}`)}
-            >
-              <MessageSquare size={16} color="#ffffff" style={isPending ? {} : styles.btnIcon} />
-              {!isPending && <Text style={styles.btnText}>Chat</Text>}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.btn,
-                isActive ? styles.btnActive : styles.btnPrimary,
-                { flex: isPending ? 1.5 : 1 }
-              ]}
-              onPress={() => handleShowQr(item)}
-            >
-              <QrCode size={16} color="#ffffff" style={styles.btnIcon} />
-              <Text style={styles.btnText}>
-                {isActive ? 'Ver QR de Salida' : 'Ver QR de Entrada'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {!(isPending || isActive) && (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnChat, { flex: 1 }]}
-              onPress={() => router.push(`/chat/${item.id}`)}
-            >
-              <MessageSquare size={16} color="#94a3b8" style={styles.btnIcon} />
-              <Text style={[styles.btnText, { color: '#94a3b8' }]}>Ver Chat (Historial)</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </Card>
-    );
-  };
+  function arrival(item: ReservationResponse) {
+    const query = encodeURIComponent(item.parkingSpace.address);
+    void Linking.openURL('https://www.google.com/maps/search/?api=1&query=' + query)
+      .catch(() => setActionError('No pudimos abrir la dirección en el mapa.'));
+  }
 
   return (
-    <View style={styles.container}>
-      {loading ? (
-        <View style={styles.loaderContainer}>
-          <Spinner size="large" />
-          <Text style={styles.loadingText}>Cargando reservas...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={reservations}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderReservationCard}
-          contentContainerStyle={styles.listContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#a855f7" />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Calendar size={60} color="#374151" />
-              <Text style={styles.emptyTitle}>Sin reservas todavía</Text>
-              <Text style={styles.emptySubtitle}>
-                Busca cocheras disponibles en el mapa para realizar tu primera reserva.
-              </Text>
-            </View>
-          }
-        />
-      )}
-
-      {/* QR Code Ticket Modal */}
-      <Modal
-        visible={qrModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setQrModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Ticket Digital ParkShare</Text>
-            <Text style={styles.modalSubtitle}>
-              {selectedResForQr?.status === 'ACTIVE'
-                ? 'Muestra este QR al dueño de la cochera para registrar tu SALIDA (Check-Out)'
-                : 'Muestra este QR al dueño de la cochera para registrar tu INGRESO (Check-In)'}
-            </Text>
-
-            <View style={styles.qrWrapper}>
-              {loadingQr ? (
-                <View style={styles.qrLoader}>
-                  <ActivityIndicator size="large" color="#a855f7" />
-                  <Text style={styles.qrLoaderText}>Generando firma segura...</Text>
+    <View style={[styles.page, { backgroundColor: colors.background }]}>
+      <FlatList
+        data={history}
+        keyExtractor={item => String(item.id)}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => {
+          setRefreshing(true);
+          void reload(true);
+        }} />}
+        ListHeaderComponent={(
+          <View style={styles.section}>
+            <Text accessibilityRole="header" style={[heading, styles.pageTitle]}>Mis reservas</Text>
+            {notice ? <Text accessibilityLiveRegion="polite" style={[text, { color: colors.success }]}>{notice}</Text> : null}
+            {failed ? (
+              <View style={[styles.card, surface]}>
+                <Text accessibilityRole="alert" style={text}>No pudimos actualizar tus reservas.</Text>
+                <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => void reload(true)}><Text style={accent}>Reintentar</Text></Pressable>
+              </View>
+            ) : !reservations ? <ActivityIndicator color={colors.accent} /> : null}
+            {current.length > 0 && <Text accessibilityRole="header" style={[heading, styles.sectionTitle]}>Tu próxima llegada</Text>}
+            {actionError && cancelId === undefined ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{actionError}</Text> : null}
+            {current.map(item => (
+              <View key={item.id} style={[styles.card, surface, { borderColor: colors.accent }]}>
+                <View style={styles.headingRow}>
+                  <Text style={[heading, styles.spaceTitle]}>{item.parkingSpace.title}</Text>
+                  <Text style={[styles.badge, { color: colors.accent, backgroundColor: colors.selected }]}>{labels[item.status]}</Text>
                 </View>
-              ) : qrData?.qrImageBase64 ? (
-                <Image
-                  source={{
-                    uri: qrData.qrImageBase64.startsWith('data:')
-                      ? qrData.qrImageBase64
-                      : `data:image/png;base64,${qrData.qrImageBase64}`,
-                  }}
-                  style={styles.qrImage}
-                  resizeMode="contain"
-                />
-              ) : (
-                <Text style={styles.errorText}>No se pudo cargar el QR</Text>
-              )}
-            </View>
-
-            {qrData?.code && (
-              <View style={styles.simulationCodeContainer}>
-                <Text style={styles.simulationCodeLabel}>Código de Simulación (Mantén presionado para copiar):</Text>
-                <Text selectable={true} style={styles.simulationCodeValue}>
-                  {qrData.code}
-                </Text>
+                <Text style={muted}>{item.parkingSpace.address}</Text>
+                <Text style={muted}>{formatSoles(item.parkingSpace.pricePerHour)} por hora</Text>
+                {item.status === 'PENDING' && item.expiresAt && <Text style={[text, { color: colors.warning }]}>Llega antes de {dateLabel(item.expiresAt)}.</Text>}
+                <View style={styles.actions}>
+                  <Pressable accessibilityRole="button" style={[styles.action, { backgroundColor: colors.accent }]} onPress={() => { setTicketId(item.id); setQrRetry(value => value + 1); }}>
+                    <QrCode size={18} color={colors.onAccent} />
+                    <Text style={{ color: colors.onAccent, fontFamily: cocheraFonts.bold }}>{item.status === 'ACTIVE' ? 'Mostrar QR de salida' : 'Mostrar QR'}</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" style={[styles.action, { backgroundColor: colors.selected }]} onPress={() => arrival(item)}>
+                    <MapPin size={18} color={colors.accent} /><Text style={accent}>Cómo llegar</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.actions}>
+                  <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => openChat(item.id)}>
+                    <MessageSquare size={16} color={colors.accent} /><Text style={accent}>Chat</Text>
+                  </Pressable>
+                  {item.status === 'PENDING' && (
+                    <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => { setActionError(''); setCancelId(item.id); }}>
+                      <Text style={[heading, { color: colors.danger }]}>Cancelar reserva</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            ))}
+            {history.length > 0 && <Text accessibilityRole="header" style={[heading, styles.sectionTitle]}>Historial</Text>}
+            {reservations?.length === 0 && (
+              <View style={[styles.card, surface]}>
+                <Calendar size={26} color={colors.accent} /><Text style={heading}>Aún no tienes reservas</Text>
+                <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => router.push('/(driver)/map')}>
+                  <Text style={accent}>Buscar cochera</Text>
+                </Pressable>
               </View>
             )}
-
-            <View style={styles.modalDetails}>
-              <Text style={styles.modalSpaceName} numberOfLines={1}>
-                {selectedResForQr?.parkingSpace.title}
-              </Text>
-              <Text style={styles.modalDetailsText}>
-                Tarifa: S/. {selectedResForQr?.parkingSpace.pricePerHour.toFixed(2)} / hora
-              </Text>
-              <Text style={styles.modalDetailsText}>
-                ID de Reserva: #{selectedResForQr?.id}
-              </Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <View style={[styles.card, surface, styles.historyCard]}>
+            <View style={styles.headingRow}>
+              <Text style={[heading, styles.spaceTitle]}>{item.parkingSpace.title}</Text>
+              <Text style={[styles.badge, {
+                color: item.status === 'FINISHED' ? colors.success : colors.secondary,
+                backgroundColor: item.status === 'FINISHED' ? colors.successBg : colors.field,
+              }]}>{labels[item.status]}</Text>
             </View>
+            <Text style={muted}>{dateLabel(item.endTime ?? item.reservedAt)}</Text>
+            <View style={styles.headingRow}>
+              {totals[item.id] !== undefined ? <Text style={heading}>Total {formatSoles(totals[item.id])}</Text>
+                : item.status === 'FINISHED' ? (
+                  <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => router.push('/(driver)/wallet')}>
+                    <Text style={accent}>Ver cobro en Billetera</Text>
+                  </Pressable>
+                ) : <Text style={muted}>Sin cobro</Text>}
+              <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => openChat(item.id)}><Text style={accent}>Ver chat</Text></Pressable>
+            </View>
+          </View>
+        )}
+      />
 
-            <TouchableOpacity
-              style={styles.modalCloseBtn}
-              onPress={() => {
-                setQrModalVisible(false);
-                fetchReservations(); // Refresh list on close
-              }}
-            >
-              <Text style={styles.modalCloseBtnText}>Cerrar Ticket</Text>
-            </TouchableOpacity>
+      <Modal visible={Boolean(ticket)} transparent animationType="fade" onRequestClose={() => setTicketId(undefined)}>
+        <View style={styles.overlay}>
+          <View style={[styles.dialog, surface]}>
+            <Text accessibilityRole="header" style={[heading, styles.pageTitle]}>{ticket?.status === 'ACTIVE' ? 'QR de salida' : 'QR de entrada'}</Text>
+            <Text style={muted}>Muéstrale este código al anfitrión de la cochera.</Text>
+            {qrLoading ? <ActivityIndicator color={colors.accent} /> : qrImage ? (
+              <Image style={styles.qr} accessibilityLabel="Código QR de la reserva" resizeMode="contain"
+                source={{ uri: qrImage.startsWith('data:') ? qrImage : 'data:image/png;base64,' + qrImage }} />
+            ) : (
+              <Pressable accessibilityRole="button" style={styles.smallAction} onPress={() => setQrRetry(value => value + 1)}>
+                <Text style={accent}>No se pudo cargar el QR. Reintentar</Text>
+              </Pressable>
+            )}
+            {!qrLoading && qr?.data?.code ? <Text selectable style={muted}>{qr.data.code}</Text> : null}
+            <Pressable accessibilityRole="button" style={[styles.action, { backgroundColor: colors.accent }]} onPress={() => setTicketId(undefined)}>
+              <Text style={{ color: colors.onAccent, fontFamily: cocheraFonts.bold }}>Cerrar QR</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={cancelId !== undefined} transparent animationType="fade" onRequestClose={() => !cancelling && setCancelId(undefined)}>
+        <View style={styles.overlay}>
+          <View style={[styles.dialog, surface]}>
+            <Text accessibilityRole="header" style={[heading, styles.pageTitle]}>¿Cancelar reserva?</Text>
+            <Text style={muted}>La cochera se liberará sin cobro.</Text>
+            {actionError ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{actionError}</Text> : null}
+            <Pressable accessibilityRole="button" disabled={cancelling} style={[styles.action, { backgroundColor: colors.selected }]} onPress={() => void cancelReservation()}>
+              <Text style={[heading, { color: colors.danger }]}>{cancelling ? 'Cancelando…' : 'Sí, cancelar reserva'}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={cancelling} style={styles.smallAction} onPress={() => { setActionError(''); setCancelId(undefined); }}>
+              <Text style={accent}>Conservar reserva</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -406,288 +266,20 @@ export default function ReservationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0b0c10',
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0b0c10',
-  },
-  loadingText: {
-    color: '#94a3b8',
-    marginTop: 12,
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  card: {
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 10,
-  },
-  spaceTitle: {
-    color: '#f8fafc',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
-    flex: 1,
-  },
-  spaceAddress: {
-    color: '#94a3b8',
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#1f2937',
-    marginVertical: 8,
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 4,
-  },
-  infoGridExtended: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 4,
-    borderTopWidth: 1,
-    borderTopColor: '#1f2937',
-    paddingTop: 8,
-    marginTop: 8,
-  },
-  infoCol: {
-    flex: 1,
-  },
-  infoLabel: {
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  infoVal: {
-    color: '#e2e8f0',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  alertRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#451a03',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#78350f',
-  },
-  alertText: {
-    color: '#fcd34d',
-    fontSize: 11,
-    fontWeight: '500',
-    marginLeft: 8,
-    flex: 1,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    minHeight: 40,
-  },
-  btnPrimary: {
-    backgroundColor: '#a855f7',
-  },
-  btnActive: {
-    backgroundColor: '#10b981',
-  },
-  btnOutline: {
-    borderWidth: 1,
-    borderColor: '#4b5563',
-    backgroundColor: 'transparent',
-    flex: 1,
-  },
-  btnChat: {
-    backgroundColor: '#1f2937',
-    borderWidth: 1,
-    borderColor: '#374151',
-  },
-  btnOutlineText: {
-    color: '#d1d5db',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  btnIcon: {
-    marginRight: 6,
-  },
-  btnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 30,
-  },
-  emptyTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    color: '#94a3b8',
-    textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  // Modal QR Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(5, 5, 8, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#11121d',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#3b0764',
-    shadowColor: '#a855f7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  modalTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  modalSubtitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 20,
-  },
-  qrWrapper: {
-    width: 220,
-    height: 220,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  qrImage: {
-    width: '100%',
-    height: '100%',
-  },
-  qrLoader: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  qrLoaderText: {
-    color: '#475569',
-    fontSize: 11,
-    marginTop: 8,
-    fontWeight: '500',
-  },
-  errorText: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalDetails: {
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: 24,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#1f2937',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1f2937',
-  },
-  modalSpaceName: {
-    color: '#f8fafc',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  modalDetailsText: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  modalCloseBtn: {
-    width: '100%',
-    backgroundColor: '#1f2937',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalCloseBtnText: {
-    color: '#f8fafc',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  simulationCodeContainer: {
-    alignItems: 'center',
-    backgroundColor: '#1e293b55',
-    padding: 10,
-    borderRadius: 10,
-    width: '100%',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#3b076455',
-  },
-  simulationCodeLabel: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '600',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  simulationCodeValue: {
-    color: '#c084fc',
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    textAlign: 'center',
-  },
+  page: { flex: 1 },
+  content: { width: '100%', maxWidth: 720, alignSelf: 'center', padding: 16, paddingBottom: 28 },
+  section: { gap: 12 },
+  pageTitle: { fontSize: 26, letterSpacing: -.5 },
+  sectionTitle: { fontSize: 18 },
+  card: { padding: 14, gap: 7, borderWidth: 1, borderRadius: 15 },
+  historyCard: { marginTop: 8 },
+  headingRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 7 },
+  spaceTitle: { flexGrow: 1, flexShrink: 1, fontSize: 17 },
+  badge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 20, fontFamily: cocheraFonts.bold, fontSize: 12, flexShrink: 0 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  action: { minHeight: 48, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  smallAction: { minHeight: 48, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', paddingHorizontal: 5, gap: 6 },
+  overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: '#211d3575' },
+  dialog: { width: '100%', maxWidth: 420, padding: 16, borderWidth: 1, borderRadius: 17, gap: 10 },
+  qr: { width: '100%', maxWidth: 232, height: 232, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 9 },
 });

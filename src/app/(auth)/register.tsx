@@ -45,7 +45,7 @@ export default function RegisterScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <Text style={styles.logo}>Crear Cuenta</Text>
-        <Text style={styles.subtitle}>Regístrate en ParkShare para empezar</Text>
+        <Text style={styles.subtitle}>Regístrate en CocheraYa para empezar</Text>
       </View>
 
       <View style={styles.form}>

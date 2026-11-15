@@ -6,9 +6,11 @@ import { useForm } from '../../hooks/useForm';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { Mail, Lock } from 'lucide-react-native';
+import { cocheraFonts, useCocheraTheme } from '../../constants/cocheraya';
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const colors = useCocheraTheme();
   const router = useRouter();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -33,14 +35,14 @@ export default function LoginScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.logo}>🅿️ ParkShare</Text>
-        <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
+        <Text style={[styles.logo, { color: colors.ink, fontFamily: cocheraFonts.bold }]}>CocheraYa</Text>
+        <Text style={[styles.subtitle, { color: colors.secondary, fontFamily: cocheraFonts.regular }]}>Inicia sesión para continuar</Text>
       </View>
 
       <View style={styles.form}>
-        {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+        {errorMsg && <Text accessibilityRole="alert" style={[styles.errorText, { color: colors.danger }]}>{errorMsg}</Text>}
 
         <Input
           label="Correo Electrónico"
@@ -50,7 +52,11 @@ export default function LoginScreen() {
           value={values.email}
           onChangeText={(text) => handleChange('email', text)}
           error={errors.email}
-          icon={<Mail size={20} color="#64748b" />}
+          icon={<Mail size={20} color={colors.secondary} />}
+          inputStyle={{ backgroundColor: colors.surface, borderColor: errors.email ? colors.danger : colors.outline }}
+          labelStyle={{ color: colors.ink }}
+          style={{ flex: 1, height: '100%', color: colors.ink, fontSize: 16, fontFamily: cocheraFonts.regular }}
+          placeholderTextColor={colors.secondary}
         />
 
         <Input
@@ -60,21 +66,26 @@ export default function LoginScreen() {
           value={values.password}
           onChangeText={(text) => handleChange('password', text)}
           error={errors.password}
-          icon={<Lock size={20} color="#64748b" />}
+          icon={<Lock size={20} color={colors.secondary} />}
+          inputStyle={{ backgroundColor: colors.surface, borderColor: errors.password ? colors.danger : colors.outline }}
+          labelStyle={{ color: colors.ink }}
+          style={{ flex: 1, height: '100%', color: colors.ink, fontSize: 16, fontFamily: cocheraFonts.regular }}
+          placeholderTextColor={colors.secondary}
         />
 
         <Button
           title="Iniciar Sesión"
           onPress={handleSubmit}
           loading={isSubmitting}
-          style={styles.submitBtn}
+          style={[styles.submitBtn, { backgroundColor: colors.accent }]}
+          textStyle={{ color: colors.onAccent, fontFamily: cocheraFonts.bold }}
         />
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>¿No tienes una cuenta? </Text>
-        <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-          <Text style={styles.linkText}>Regístrate aquí</Text>
+        <Text style={[styles.footerText, { color: colors.secondary }]}>¿No tienes una cuenta? </Text>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/(auth)/register')} style={{ minHeight: 48, justifyContent: 'center' }}>
+          <Text style={[styles.linkText, { color: colors.accent, fontFamily: cocheraFonts.bold }]}>Regístrate aquí</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -84,9 +95,9 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0c10',
     padding: 24,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     alignItems: 'center',
@@ -104,9 +115,12 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 16,
+    maxWidth: 420,
+    width: '100%',
   },
   submitBtn: {
     marginTop: 10,
+    minHeight: 48,
   },
   errorText: {
     color: '#ef4444',
@@ -117,6 +131,8 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 30,
   },
   footerText: {

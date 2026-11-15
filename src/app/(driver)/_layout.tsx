@@ -3,36 +3,42 @@ import { Tabs } from 'expo-router';
 import { Map, Calendar, Wallet, LogOut } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { cocheraFonts, useCocheraTheme } from '../../constants/cocheraya';
 
 export default function DriverLayout() {
   const { logout } = useAuth();
+  const colors = useCocheraTheme();
+  const { bottom } = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: true,
         headerStyle: {
-          backgroundColor: '#0b0c10',
+          backgroundColor: colors.surface,
           borderBottomWidth: 1,
-          borderBottomColor: '#1f2937',
+          borderBottomColor: colors.outline,
         },
         headerTitleStyle: {
-          color: '#f8fafc',
-          fontWeight: '700',
+          color: colors.ink,
+          fontFamily: cocheraFonts.bold,
         },
         tabBarStyle: {
-          backgroundColor: '#0b0c10',
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
-          borderTopColor: '#1f2937',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopColor: colors.outline,
+          height: 64 + bottom,
+          paddingBottom: bottom + 5,
+          paddingTop: 5,
         },
-        tabBarActiveTintColor: '#a855f7',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarLabelPosition: 'below-icon',
+        tabBarLabelStyle: { fontFamily: cocheraFonts.bold, fontSize: 12, lineHeight: 16 },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.secondary,
         headerRight: () => (
-          <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-            <LogOut size={20} color="#ef4444" />
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={logout} style={styles.logoutBtn}>
+            <LogOut size={20} color={colors.danger} />
           </TouchableOpacity>
         ),
       }}
@@ -40,17 +46,17 @@ export default function DriverLayout() {
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Buscar Cochera',
+          title: 'CocheraYa',
           tabBarLabel: 'Mapa',
-          tabBarIcon: ({ color, size }) => <Map size={size} color={color} />,
+          tabBarIcon: ({ color }) => <Map size={20} color={color} />,
         }}
       />
       <Tabs.Screen
         name="reservations"
         options={{
-          title: 'Mis Reservas',
+          title: 'CocheraYa',
           tabBarLabel: 'Reservas',
-          tabBarIcon: ({ color, size }) => <Calendar size={size} color={color} />,
+          tabBarIcon: ({ color }) => <Calendar size={20} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -58,7 +64,7 @@ export default function DriverLayout() {
         options={{
           title: 'Mi Billetera',
           tabBarLabel: 'Billetera',
-          tabBarIcon: ({ color, size }) => <Wallet size={size} color={color} />,
+          tabBarIcon: ({ color }) => <Wallet size={20} color={color} />,
         }}
       />
     </Tabs>
@@ -67,7 +73,10 @@ export default function DriverLayout() {
 
 const styles = StyleSheet.create({
   logoutBtn: {
-    marginRight: 16,
-    padding: 8,
+    marginRight: 8,
+    minWidth: 48,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

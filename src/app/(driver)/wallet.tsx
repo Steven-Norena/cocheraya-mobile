@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Spinner from '../../components/Spinner';
+import { formatSoles } from '../../services/presentation';
 
 export default function WalletScreen() {
   const { balance, refreshBalance } = useAuth();
@@ -114,9 +115,9 @@ export default function WalletScreen() {
 
         <View style={styles.txRight}>
           <Text style={[styles.txAmount, isTopUp ? styles.txAmountPositive : styles.txAmountNegative]}>
-            {isTopUp ? '+' : ''}S/. {item.amount.toFixed(2)}
+            {isTopUp ? '+' : ''}{formatSoles(item.amount)}
           </Text>
-          <Text style={styles.txBalanceAfter}>Saldo: S/. {item.balanceAfter.toFixed(2)}</Text>
+          <Text style={styles.txBalanceAfter}>Saldo: {formatSoles(item.balanceAfter)}</Text>
         </View>
       </View>
     );
@@ -150,7 +151,7 @@ export default function WalletScreen() {
               </View>
 
               <Text style={styles.balanceText}>
-                S/. {(balance || 0).toFixed(2)}
+                {formatSoles(balance ?? 0)}
               </Text>
               
               <Text style={styles.cardSubText}>Moneda de Pago: Sol Peruano (PEN)</Text>
@@ -170,7 +171,7 @@ export default function WalletScreen() {
                     onPress={() => handleTopUp(amt)}
                     disabled={isSubmitting}
                   >
-                    <Text style={styles.presetText}>+ S/. {amt}</Text>
+                    <Text style={styles.presetText}>+ {formatSoles(amt)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -178,7 +179,7 @@ export default function WalletScreen() {
               {/* Custom Amount Form */}
               <View style={styles.customAmountForm}>
                 <View style={styles.inputWrapper}>
-                  <Text style={styles.currencySymbol}>S/.</Text>
+                  <Text style={styles.currencySymbol}>S/</Text>
                   <TextInput
                     style={styles.customInput}
                     placeholder="Monto personalizado"

@@ -122,3 +122,9 @@ Realice los siguientes pasos para certificar que el flujo integrado de extremo a
    * En la pestaña de reservas de conductor, pulse el botón para copiar el UUID de la reserva.
    * Simule la entrada y salida de la cochera.
    * Valide que en el panel de Ganancias del `HOST` en la app móvil se muestra de forma desglosada y auditada: duración, ID de reserva, montos y horas exactas asociadas a la transacción.
+
+## Mapa de búsqueda
+
+El mapa nativo conserva `react-native-maps`. La versión web usa Leaflet y muestra teselas de OpenStreetMap con atribución para desarrollo, de acuerdo con su [política de uso](https://operations.osmfoundation.org/policies/tiles/). Para desplegar la versión web con [CARTO Basemaps](https://www.carto.com/basemaps/apikey/index.html), configura una clave de cliente con `EXPO_PUBLIC_CARTO_API_KEY` y vuelve a generar el bundle.
+
+La pantalla muestra resultados de Miraflores al abrirse. Cambiar de zona, pasar a la lista y filtrar no dependen del permiso de ubicación.

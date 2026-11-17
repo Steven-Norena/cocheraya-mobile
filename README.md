@@ -9,6 +9,8 @@
 * **Periodo:** 2026-2
 * **Institución:** Universidad de Ingeniería y Tecnología (UTEC) — Lima, Perú
 * **Enlace de Publicación (Expo Go / EAS):** Disponible para escaneo QR mediante Expo Go
+* **Repositorio Frontend Web:** [cocheraya-frontend](https://github.com/Steven-Norena/cocheraya-frontend)
+* **Repositorio Backend:** [cocheraya-backend](https://github.com/ChrisMar0512/cocheraya-backend)
 
 ---
 

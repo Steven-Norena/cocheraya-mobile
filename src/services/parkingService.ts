@@ -21,6 +21,14 @@ export interface SearchNearbyParams {
   radius: number;
 }
 
+export const FEATURE_MAP: Record<string, number> = {
+  'Techado': 1,
+  'Seguridad 24h': 2,
+  'Acceso Camionetas': 3,
+  'Iluminación': 4,
+  'Cámaras': 5,
+};
+
 export interface CreateParkingSpaceMetadata {
   title: string;
   description: string;
@@ -28,7 +36,8 @@ export interface CreateParkingSpaceMetadata {
   pricePerHour: number;
   latitude: number;
   longitude: number;
-  features: string[];
+  features?: string[];
+  featureIds?: number[];
 }
 
 export interface MobilePhotoFile {
@@ -56,8 +65,22 @@ export const parkingService = {
   },
 
   async create(metadata: CreateParkingSpaceMetadata, photo?: MobilePhotoFile): Promise<ParkingSpace> {
+    const mappedIds = (metadata.featureIds && metadata.featureIds.length > 0)
+      ? metadata.featureIds
+      : (metadata.features || []).map(f => FEATURE_MAP[f] || 1).filter(Boolean);
+
+    const payload = {
+      title: metadata.title,
+      description: metadata.description,
+      address: metadata.address,
+      pricePerHour: metadata.pricePerHour,
+      latitude: metadata.latitude,
+      longitude: metadata.longitude,
+      featureIds: Array.from(new Set(mappedIds)),
+    };
+
     const formData = new FormData();
-    formData.append('data', JSON.stringify(metadata));
+    formData.append('data', JSON.stringify(payload));
     if (photo) {
       if (photo.file) {
         formData.append('photo', photo.file);
@@ -74,8 +97,22 @@ export const parkingService = {
   },
 
   async update(id: number, metadata: CreateParkingSpaceMetadata, photo?: MobilePhotoFile): Promise<ParkingSpace> {
+    const mappedIds = (metadata.featureIds && metadata.featureIds.length > 0)
+      ? metadata.featureIds
+      : (metadata.features || []).map(f => FEATURE_MAP[f] || 1).filter(Boolean);
+
+    const payload = {
+      title: metadata.title,
+      description: metadata.description,
+      address: metadata.address,
+      pricePerHour: metadata.pricePerHour,
+      latitude: metadata.latitude,
+      longitude: metadata.longitude,
+      featureIds: Array.from(new Set(mappedIds)),
+    };
+
     const formData = new FormData();
-    formData.append('data', JSON.stringify(metadata));
+    formData.append('data', JSON.stringify(payload));
     if (photo) {
       if (photo.file) {
         formData.append('photo', photo.file);

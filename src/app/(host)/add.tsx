@@ -316,7 +316,7 @@ export default function AddSpaceScreen() {
 
         {/* Form Submission */}
         <Button
-          title="Publicar en ParkShare"
+          title="Publicar en CocheraYa"
           onPress={handlePublish}
           loading={submitting}
           style={styles.publishBtn}

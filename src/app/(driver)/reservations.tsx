@@ -340,7 +340,7 @@ export default function ReservationsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Ticket Digital ParkShare</Text>
+            <Text style={styles.modalTitle}>Ticket Digital CocheraYa</Text>
             <Text style={styles.modalSubtitle}>
               {selectedResForQr?.status === 'ACTIVE'
                 ? 'Muestra este QR al dueño de la cochera para registrar tu SALIDA (Check-Out)'

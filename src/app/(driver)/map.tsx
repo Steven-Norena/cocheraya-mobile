@@ -16,6 +16,7 @@ import * as Location from 'expo-location';
 import { MapPin, Compass, Shield, Navigation, Star, Info, Wallet } from 'lucide-react-native';
 import parkingService, { ParkingSpace } from '../../services/parkingService';
 import reservationService from '../../services/reservationService';
+import externalApiService, { LocationWeather } from '../../services/externalApiService';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
@@ -53,8 +54,20 @@ export default function MapScreen() {
   const [loadingLocation, setLoadingLocation] = useState(true);
   const [parkingSpaces, setParkingSpaces] = useState<ParkingSpace[]>([]);
   const [selectedSpace, setSelectedSpace] = useState<ParkingSpace | null>(null);
+  const [weather, setWeather] = useState<LocationWeather | null>(null);
   const [loadingSpaces, setLoadingSpaces] = useState(false);
   const [reserving, setReserving] = useState(false);
+
+  // Fetch weather when a parking space is selected (Rubric 2.3 - External API)
+  useEffect(() => {
+    if (selectedSpace) {
+      externalApiService.getWeather(selectedSpace.latitude, selectedSpace.longitude)
+        .then(setWeather)
+        .catch(() => setWeather(null));
+    } else {
+      setWeather(null);
+    }
+  }, [selectedSpace]);
 
   // Ask for location permissions on mount
   useEffect(() => {
@@ -433,6 +446,11 @@ export default function MapScreen() {
               <View style={styles.titleWrapper}>
                 <Text style={styles.drawerTitle} numberOfLines={1}>{selectedSpace.title}</Text>
                 <Text style={styles.drawerAddress} numberOfLines={1}>📍 {selectedSpace.address}</Text>
+                {weather && (
+                  <Text style={{ fontSize: 12, color: '#38bdf8', marginTop: 3 }}>
+                    🌤️ {weather.temperature}°C • {weather.condition}
+                  </Text>
+                )}
               </View>
               <View style={styles.priceBadge}>
                 <Text style={styles.priceText}>S/. {selectedSpace.pricePerHour.toFixed(2)}</Text>

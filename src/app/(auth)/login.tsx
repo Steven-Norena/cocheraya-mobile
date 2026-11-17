@@ -35,7 +35,7 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.logo}>🅿️ ParkShare</Text>
+        <Text style={styles.logo}>🅿️ CocheraYa</Text>
         <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
       </View>
 

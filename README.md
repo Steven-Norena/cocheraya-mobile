@@ -1,124 +1,134 @@
 # 📱 CocheraYa — Aplicación Móvil (React Native + Expo + TypeScript)
 
-## 📑 Portada
+---
+
+## 📑 Portada del Proyecto
+
 * **Proyecto:** CocheraYa — Cliente Móvil Nativo
-* **Curso:** CS 2031 Desarrollo Basado en Plataforma
+* **Curso:** CS 2031 Desarrollo Basado en Plataformas
+* **Periodo:** 2026-2
 * **Institución:** Universidad de Ingeniería y Tecnología (UTEC) — Lima, Perú
-* **Enlace de Publicación (Expo Go):** [Escanea el QR en Expo (EAS Update)]()
+* **Enlace de Publicación (Expo Go / EAS):** Disponible para escaneo QR mediante Expo Go
+
+---
+
+## 👥 Tabla de Participación de los Integrantes (Rúbrica de Evaluación)
+
+En cumplimiento con el criterio de evaluación de la segunda entrega del curso, a continuación se presenta la tabla de participación individual de cada integrante del equipo:
+
+| Integrante | Código UTEC | Correo Institucional | Principales Aportes | Participación (%) |
+| :--- | :--- | :--- | :--- | :---: |
+| **Christian Mar Carrillo** | 202410512 | christian.mar@utec.edu.pe | Arquitectura REST Backend con Spring Boot 3.2, geoespacial PostGIS, transaccionalidad pesimista, eventos asíncronos y aprovisionamiento Docker/Cloud. | **100 %** |
+| **Steven Daniel Noreña Paredes** | 202510642 | steven.norena@utec.edu.pe | Desarrollo del cliente Web (React 18 + TS + Vite), integración con mapa interactivo Leaflet, breadcrumbs, lazy loading y diseño de interfaces UI/UX. | **100 %** |
+| **Luciano Gabriel Rivera Valentin** | 202410149 | luciano.rivera@utec.edu.pe | Desarrollo de la aplicación móvil nativa (React Native + Expo), integración de sensores (GPS, Cámara para QR, galería), arquitectura modular y consumo de API. | **100 %** |
+| **Anthony Yair Caypane Ramirez** | 202410690 | anthony.caypane@utec.edu.pe | Integración de endpoints de reservas y billetera auditada, manejo global de errores (Error Boundary), validaciones client-side y políticas CORS. | **100 %** |
 
 ---
 
 ## 🚀 Tecnologías Principales
 
-- **React Native & Expo:** Plataforma de desarrollo híbrido nativo para dispositivos Android y iOS.
-- **Expo Router:** Enrutamiento nativo basado en archivos, brindando transiciones fluidas de pantalla.
-- **Expo SecureStore:** Almacenamiento seguro en hardware encriptado de claves y tokens JWT.
-- **Expo Location:** Acceso nativo al sensor GPS del dispositivo.
-- **Expo Image Picker & Camera:** Acceso a la cámara nativa y galería de fotos.
-- **React Native Maps:** Integración nativa con Apple Maps y Google Maps.
-- **Axios:** Cliente HTTP para comunicación y sincronización transaccional con el backend.
-- **Context API:** Manejo centralizado de sesión y autenticación persistente.
+- **React Native 0.81 & Expo SDK 54:** Framework principal para aplicaciones móviles nativas iOS y Android con rendimiento fluido.
+- **Expo Router:** Enrutamiento nativo basado en archivos por grupo de rol (`(auth)`, `(driver)`, `(host)`).
+- **Expo SecureStore:** Almacenamiento seguro en hardware encriptado para tokens JWT y datos de sesión (`Keychain` en iOS y `KeyStore` en Android).
+- **Expo Location:** Acceso nativo al sensor GPS con manejo de permisos y coordenadas en tiempo real.
+- **Expo Camera (`CameraView`):** Acceso a la cámara nativa para escaneo en vivo de códigos QR de check-in/out con vibración háptica.
+- **Expo Image Picker:** Acceso a cámara y galería para captura de fotos de cocheras con fallback visual.
+- **React Native Maps:** Integración nativa con Google Maps (Android) y Apple Maps (iOS).
+- **Open-Meteo Weather API:** API externa de condiciones meteorológicas en tiempo real integrada en la selección de cocheras.
+- **Axios con Interceptores:** Cliente HTTP desacoplado con resolución dinámica de IP, inyección de tokens y reintentos ante caídas transitorias de red.
+- **Context API:** Manejo de sesión global (`AuthContext`) y sincronización reactiva de saldo de billetera.
 
 ---
 
-## 🧩 Arquitectura Móvil y Estructura
+## 🧱 Arquitectura y Separación de Responsabilidades (Rúbrica 2.2)
 
-La aplicación móvil está estructurada siguiendo el patrón de diseño de separación de responsabilidades:
+La arquitectura sigue una separación estricta en capas modulares:
 
 ```text
 mobile-cocheraya/
-├── assets/         # Recursos del sistema (iconos, splash screens, tipografías)
+├── app.json             # Manifiesto y configuración de Expo (identificadores y esquema CocheraYa)
+├── assets/              # Recursos estáticos (iconos, splash, tipografías)
 └── src/
-    ├── app/        # Estructura de vistas nativas (Expo Router)
-    │   ├── (auth)/   # Registro e Inicio de sesión
-    │   ├── (driver)/ # Vistas exclusivas del conductor (Billetera nativa, Historial)
-    │   └── (host)/   # Vistas exclusivas del anfitrión (Dashboard, Publicar cochera, Ganancias)
-    ├── components/ # Componentes de interfaz de usuario reutilizables (inputs, botones, modales)
-    ├── context/    # Manejo del estado global (`AuthContext`)
-    └── services/   # Capa de consumo de API REST
-        ├── api.ts          # Cliente Axios centralizado e interceptores
-        ├── secureStore.ts  # Adaptador seguro para Expo SecureStore
-        └── ...             # Servicios de negocio (reservas, billetera, espacios)
+    ├── app/             # Capa de UI y Navegación (Expo Router)
+    │   ├── _layout.tsx    # Enrutador raíz con control de autenticación
+    │   ├── index.tsx      # Redirección dinámica por rol (DRIVER / HOST)
+    │   ├── (auth)/        # Vistas de autenticación (login, register)
+    │   ├── (driver)/      # Vistas de conductor (mapa interactivo, reservas, billetera)
+    │   ├── (host)/        # Vistas de anfitrión (dashboard, scan QR, cocheras, agregar, ganancias)
+    │   └── chat/[id].tsx  # Mensajería bidireccional en tiempo real
+    ├── components/      # Componentes presentacionales reutilizables (Button, Input, Card, Badge, Spinner)
+    ├── constants/       # Paleta de colores, tipografías y tema visual
+    ├── context/         # AuthContext para estado global de autenticación
+    ├── hooks/           # Custom hooks (useForm con useReducer, useFetch)
+    └── services/        # Capa de servicios e integración con el backend
+        ├── api.ts              # Axios centralizado, reintentos e interceptores
+        ├── secureStore.ts      # Encriptación de JWT en SecureStore nativo
+        ├── externalApiService.ts # Consumo de Open-Meteo Weather API
+        ├── authService.ts      # Login, registro y refresh token
+        ├── parkingService.ts   # Cocheras, búsqueda espacial PostGIS y dashboard
+        ├── reservationService.ts # Reservas, check-in, check-out y QR
+        ├── reviewService.ts    # Calificaciones comunitarias
+        └── walletService.ts    # Transacciones auditadas y recargas
 ```
 
 ---
 
-## 🔌 Integración con el Backend y Seguridad (Rubric 2.1)
+## 🔌 Integración con el Backend y Seguridad (Rúbrica 2.1)
 
-El consumo de servicios HTTP se gestiona exclusivamente a través de un cliente centralizado de **Axios** en [api.ts](file:///c:/DBP/proyecto-1-parkshare/mobile-parkshare/src/services/api.ts):
+El consumo de servicios HTTP se gestiona a través de la capa de servicios centralizada en [api.ts](src/services/api.ts):
 
-* **Configuración Dinámica de Host:** Determina automáticamente la dirección IP local de desarrollo mediante `Constants.expoConfig?.hostUri` para enlazar el emulador Android, simulador iOS o dispositivo físico de manera transparente.
-* **Persistencia Segura (JWT):** Los tokens de autenticación JWT se guardan en el dispositivo utilizando la biblioteca nativa **Expo SecureStore** en lugar de almacenamiento persistente no seguro (evitando fugas en texto plano).
-* **Interceptor de Peticiones:** Captura de forma asíncrona el JWT de `SecureStore` y lo inyecta como cabecera `Authorization: Bearer` en cada llamada.
-* **Interceptor de Respuestas (Refresh Token):** Ante un error de sesión expirada (`401 Unauthorized`), el interceptor solicita un nuevo token a través de `/auth/refresh-token` en segundo plano utilizando el token de refresco, lo actualiza de forma transparente en `SecureStore` y repite la petición original sin interrumpir el flujo del usuario.
-
----
-
-## 📡 Sensores de Hardware y APIs Externas (Rubric 2.3)
-
-La aplicación móvil aprovecha las API y el hardware nativo de los dispositivos móviles para enriquecer la experiencia de usuario:
-
-1. **Cámara Nativa y Fotos (`expo-image-picker` / `expo-camera`):**
-   * **Propósito:** El anfitrión (`HOST`) puede capturar fotos de las cocheras al subirlas al sistema.
-   * **Gestión de Permisos:** Se solicitan los permisos nativos del sistema operativo de forma explícita al usuario, mostrando explicaciones claras de por qué se necesita la cámara.
-   * **Fallback:** Si el usuario deniega el permiso de la cámara, la aplicación activa un fallback automático que le permite seleccionar un archivo de imagen existente desde su galería de fotos local.
-
-2. **Sensor GPS y Geolocalización (`expo-location`):**
-   * **Propósito:** Permite ubicar la posición física en tiempo real del conductor para buscar cocheras cercanas en un radio espacial definido.
-   * **Gestión de Permisos:** Solicita permisos de ubicación fina (`Location.requestForegroundPermissionsAsync`).
-   * **Fallback:** Si el usuario no otorga el permiso del GPS, el sistema muestra un mensaje de advertencia y centra el mapa de manera predeterminada en coordenadas céntricas preestablecidas (ej. San Isidro / Miraflores), permitiendo realizar la búsqueda geoespacial de forma manual.
-
-3. **Mapas Interactivos (`react-native-maps`):**
-   * **Propósito:** Integrar el mapa nativo (Google Maps en Android y Apple Maps en iOS) para marcar visualmente la posición del conductor y la ubicación exacta de las cocheras disponibles, permitiendo al usuario interactuar y seleccionar marcadores directamente en la pantalla.
+* **Consumo Exclusivo del Backend:** Toda la lógica de negocio (reservas, billetera, cocheras, estados) proviene de la API REST desarrollada en Spring Boot 3.2.
+* **Resolución Dinámica de Host:** Detecta automáticamente la dirección IP local de la computadora mediante `Constants.expoConfig?.hostUri` para comunicarse fluidamente desde dispositivos móviles físicos vía Wi-Fi, o mediante `10.0.2.2` en emulador Android.
+* **Persistencia Segura (JWT):** Los tokens se encriptan mediante **Expo SecureStore**, evitando almacenamiento inseguro en texto plano.
+* **Interceptor de Peticiones:** Inyecta automáticamente el token JWT en las cabeceras `Authorization: Bearer <token>`.
+* **Interceptor de Respuestas (Refresh Token):** Ante respuestas `401 Unauthorized`, solicita automáticamente un nuevo access token a `/api/v1/auth/refresh-token` y reintenta la solicitud fallida de manera transparente.
+* **Métodos HTTP Completos:** Implementa `GET`, `POST`, `PUT`, `DELETE` y compatibilidad con `PATCH`.
 
 ---
 
-## ⚠️ Manejo de Errores y Experiencia de Carga (Rubric 2.4)
+## 📡 Sensores de Hardware y APIs Externas (Rúbrica 2.3)
 
-* **Robustez en Llamadas API:** Todas las interacciones con el backend están resguardadas en bloques `try-catch`, previniendo detenciones abruptas de la interfaz (crashes).
-* **Mensajes de Usuario Amigables:** Muestra alertas emergentes nativas explicando el problema (ej: *"Saldo insuficiente para realizar el Check-out"*, *"Verifique su conexión a Internet"*).
-* **Estados de Carga Visuales:** Implementación de spinners (`ActivityIndicator`) y skeletons personalizados en pantallas de carga de reservas e historial para evitar que el usuario interactúe con elementos vacíos.
-* **Prevención de Solicitudes Duplicadas:** Deshabilitación de botones al procesar recargas financieras u operaciones críticas para evitar el doble envío.
-* **Clipboard API (`expo-clipboard`):** Permite copiar directamente al portapapeles el UUID simulado de las reservas en la pantalla móvil con un botón interactivo de éxito visual (feedback rápido).
+La aplicación integra de forma óptima el hardware del teléfono móvil y APIs externas:
+
+1. **Sensor GPS (`expo-location`):**
+   * **Propósito:** Obtiene la posición física en tiempo real del conductor para buscar cocheras cercanas mediante `ST_DWithin` en PostGIS.
+   * **Permisos y Fallback:** Solicita permisos en primer plano con mensajes amigables. Si el usuario rechaza los permisos, la aplicación activa un fallback automático centrando el mapa en Miraflores / San Isidro.
+
+2. **Cámara Nativa y Escáner QR (`expo-camera` / `expo-image-picker`):**
+   * **Propósito:** El `HOST` puede escanear en tiempo real el código QR del conductor mediante `CameraView` para procesar el Check-In o Check-Out físico. Cuenta con retroalimentación háptica (`Vibration.vibrate`) y fallback manual por teclado si la cámara no está disponible.
+   * **Fotos de Cochera:** Al registrar una cochera, el anfitrión puede tomar una foto con la cámara o seleccionarla de la galería.
+
+3. **APIs Externas Relevantes:**
+   * **Mapas Nativos:** Apple Maps en iOS y Google Maps en Android para visualización satelital y navegación.
+   * **Open-Meteo Weather API:** Consulta meteorológica en tiempo real (`externalApiService.ts`) mostrando el clima actual sobre la cochera seleccionada antes de reservar.
+
+---
+
+## ⚠️ Manejo de Errores y Experiencia de Carga (Rúbrica 2.4)
+
+* **Try-Catch Exhaustivo:** Cada operación de red se encuentra resguardada para prevenir bloqueos o caídas inesperadas de la aplicación.
+* **Mensajes Amigables:** Notificaciones claras al usuario en español en lugar de códigos técnicos crudos.
+* **Retry Logic:** El interceptor de Axios reintenta automáticamente solicitudes fallidas ante errores temporales de red.
+* **Estados de Carga Visuales:** Indicadores nativos `ActivityIndicator` y spinners en todas las acciones asíncronas.
+* **Prevención de Doble Envío:** Deshabilitación de botones (`disabled={isSubmitting}`) durante recargas y confirmaciones de reserva.
 
 ---
 
 ## 🛠️ Instalación y Uso Local
 
-1. **Instalar Dependencias:**
-   ```bash
-   npm install
-   ```
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/Steven-Norena/cocheraya-mobile.git
+cd cocheraya-mobile
 
-2. **Configurar el Endpoint:**
-   La aplicación utiliza `expo-constants` para enlazar la dirección IP local de tu computador de forma dinámica. Si ejecutas en un entorno de red específico, verifica que tu dispositivo móvil y computador estén conectados a la misma red Wi-Fi.
+# 2. Instalar dependencias
+npm install
 
-3. **Iniciar Servidor de Desarrollo:**
-   ```bash
-   npx expo start
-   ```
+# 3. Iniciar entorno de desarrollo Expo
+npx expo start
+```
 
-4. **Ejecución en Dispositivo / Emulador:**
-   - Presione `a` para emulador de Android.
-   - Presione `i` para simulador de iOS.
-   - Escanee el código QR que se muestra en la consola utilizando la aplicación **Expo Go** en su celular.
-
----
-
-## 🗺️ Guía Técnica de Pruebas Móviles (Flujo Completo)
-
-Realice los siguientes pasos para certificar que el flujo integrado de extremo a extremo funcione correctamente desde el teléfono móvil:
-
-1. **Autenticación:**
-   * Inicie sesión en la app con un usuario previamente registrado. Valide que la redirección a las vistas nativas se ejecuta inmediatamente según el rol del perfil.
-2. **Publicar Espacio con Foto de Cámara (Rol HOST):**
-   * Logueado como `HOST`, navegue a "Agregar Cochera".
-   * Presione "Subir Imagen", permita el acceso de permisos nativos del sistema y capture una foto de prueba. Rellene el formulario de ubicación. Guarde el registro.
-3. **Flujo de Reserva en Tiempo Real (Rol DRIVER):**
-   * Acceda como `DRIVER` a la aplicación.
-   * Navegue en la vista de mapa, valide que visualiza su posición GPS actual (gracias a `expo-location`) y que puede observar en el mapa el marcador de la cochera registrada.
-   * Realice la reserva del espacio. El mapa actualizará visualmente el estado.
-4. **Validación Transaccional y Auditoría (Check-In / Out):**
-   * En la pestaña de reservas de conductor, pulse el botón para copiar el UUID de la reserva.
-   * Simule la entrada y salida de la cochera.
-   * Valide que en el panel de Ganancias del `HOST` en la app móvil se muestra de forma desglosada y auditada: duración, ID de reserva, montos y horas exactas asociadas a la transacción.
+* Presione **`a`** para abrir el emulador de Android.
+* Presione **`i`** para abrir el simulador de iOS.
+* Presione **`w`** para previsualizar en navegador Web.
+* O escanee el código QR desde la aplicación **Expo Go** en su smartphone físico (asegúrese de que el teléfono y la computadora compartan la misma red Wi-Fi).
